@@ -52,7 +52,7 @@ export default async function TransactionsPage() {
 
       <div className="mb-6 grid grid-cols-2 gap-4">
         <StatCard label="Transactions" value={String(items.length)} />
-        <StatCard label="Total spend" value={formatCurrency(total)} />
+        <StatCard label="Total spend" value={formatCurrency(total)} accent />
       </div>
 
       <TransactionList items={items} />

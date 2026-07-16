@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <body className="min-h-full bg-gradient-to-b from-zinc-50 to-zinc-100/60 text-zinc-900 dark:from-zinc-950 dark:to-zinc-950 dark:text-zinc-100">
         <div className="flex min-h-screen flex-col sm:flex-row">
           <Sidebar />
           <main className="flex-1 px-5 py-6 sm:px-10 sm:py-10">{children}</main>

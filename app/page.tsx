@@ -100,6 +100,7 @@ export default async function DashboardPage() {
           label="Monthly total"
           value={formatCurrency(monthlyTotal)}
           hint="Across all active subscriptions"
+          accent
         />
         <StatCard label="Active subscriptions" value={String(subs.length)} />
         <StatCard
@@ -160,7 +161,7 @@ export default async function DashboardPage() {
             <div className="flex flex-col gap-2">
               {subs.map((s) => (
                 <Link key={s.id} href={`/subscriptions/${s.id}`}>
-                  <Card className="transition-colors hover:border-emerald-300 dark:hover:border-emerald-700">
+                  <Card className="transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md dark:hover:border-emerald-700">
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">

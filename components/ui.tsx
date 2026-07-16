@@ -34,7 +34,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${className}`}
+      className={`rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm shadow-zinc-900/[0.03] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-none ${className}`}
     >
       {children}
     </div>
@@ -45,17 +45,29 @@ export function StatCard({
   label,
   value,
   hint,
+  accent = false,
 }: {
   label: string;
   value: string;
   hint?: string;
+  accent?: boolean;
 }) {
   return (
-    <Card>
-      <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+    <Card
+      className={
+        accent
+          ? "bg-gradient-to-br from-emerald-50 to-white ring-1 ring-emerald-100 dark:from-emerald-500/10 dark:to-zinc-900 dark:ring-emerald-500/20"
+          : ""
+      }
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+      <p
+        className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${
+          accent ? "text-emerald-700 dark:text-emerald-400" : ""
+        }`}
+      >
         {value}
       </p>
       {hint && (
@@ -77,7 +89,14 @@ export function EmptyState({
   actionLabel?: string;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-white/50 px-6 py-16 text-center dark:border-zinc-700 dark:bg-zinc-900/50">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-white/50 px-6 py-16 text-center dark:border-zinc-700 dark:bg-zinc-900/50">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <path d="M17 8l-5-5-5 5" />
+          <path d="M12 3v12" />
+        </svg>
+      </div>
       <h3 className="text-base font-semibold">{title}</h3>
       <p className="mt-1 max-w-sm text-sm text-zinc-500 dark:text-zinc-400">
         {description}
