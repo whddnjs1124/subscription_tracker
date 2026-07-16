@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
-import { detectRecurring, nextBilling } from "@/lib/detection";
+import { detectRecurring, nextBilling, merchantKey } from "@/lib/detection";
 import { analyzeMerchants } from "@/lib/gemini";
-import type { MerchantAnalysis } from "@/lib/types";
+import type { MerchantAnalysis, SubscriptionCadence } from "@/lib/types";
 
 export interface DetectedSubscription {
   id: string;
@@ -20,16 +20,134 @@ export interface DetectionSummary {
   subscriptions: DetectedSubscription[];
 }
 
+// A stored Merchant row, as returned by Prisma.
+type MerchantRow = {
+  id: string;
+  normalizedName: string;
+  description: string;
+  category: string;
+  isSubscriptionService: boolean;
+};
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
+interface KeyGroup {
+  key: string;
+  sampleDescription: string;
+  amount: number; // representative (most-recent) amount
+  lastDate: number;
+  occurrences: number;
+  transactionIds: string[];
+}
+
+/**
+ * Stage A: name and classify EVERY unique merchant on record (not just recurring
+ * ones) so all imported transactions get a clean name and description. New
+ * merchants are batched to Gemini and cached in the Merchant table; already-known
+ * merchants are reused. Every transaction is linked to its merchant. Gemini
+ * failures are non-fatal per batch — unlabeled transactions just keep their raw
+ * description and can be re-analyzed on the next import.
+ */
+async function enrichMerchants(
+  txs: { id: string; amount: number; rawDescription: string; date: Date }[],
+  cadenceByKey: Map<string, SubscriptionCadence>
+): Promise<{ merchantsAnalyzed: number; merchantByKey: Map<string, MerchantRow> }> {
+  const groups = new Map<string, KeyGroup>();
+  for (const tx of txs) {
+    const key = merchantKey(tx.rawDescription);
+    if (!key) continue;
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        key,
+        sampleDescription: tx.rawDescription,
+        amount: tx.amount,
+        lastDate: tx.date.getTime(),
+        occurrences: 0,
+        transactionIds: [],
+      };
+      groups.set(key, g);
+    }
+    g.occurrences++;
+    g.transactionIds.push(tx.id);
+    if (tx.date.getTime() >= g.lastDate) {
+      g.lastDate = tx.date.getTime();
+      g.amount = tx.amount;
+      g.sampleDescription = tx.rawDescription;
+    }
+  }
+
+  const keys = [...groups.keys()];
+  const existing = await prisma.merchant.findMany({
+    where: { rawPattern: { in: keys } },
+  });
+  const merchantByKey = new Map<string, MerchantRow>(
+    existing.map((m) => [m.rawPattern, m])
+  );
+  const missing = keys.filter((k) => !merchantByKey.has(k));
+
+  let merchantsAnalyzed = 0;
+  for (const batch of chunk(missing, 40)) {
+    let analyses: MerchantAnalysis[];
+    try {
+      analyses = await analyzeMerchants(
+        batch.map((k) => {
+          const g = groups.get(k)!;
+          return {
+            key: k,
+            sampleDescription: g.sampleDescription,
+            amount: g.amount,
+            cadence: cadenceByKey.get(k) ?? "one-time",
+            occurrences: g.occurrences,
+          };
+        })
+      );
+    } catch {
+      // Quota/network failure — skip this batch, leave these merchants unlabeled.
+      continue;
+    }
+    const analysisByKey = new Map(analyses.map((a) => [a.rawPattern, a]));
+    for (const k of batch) {
+      const a = analysisByKey.get(k);
+      if (!a) continue;
+      const merchant = await prisma.merchant.create({
+        data: {
+          rawPattern: k,
+          normalizedName: a.normalizedName,
+          description: a.description,
+          category: a.category,
+          isSubscriptionService: a.isSubscription,
+        },
+      });
+      merchantByKey.set(k, merchant);
+      merchantsAnalyzed++;
+    }
+  }
+
+  // Link every transaction to its merchant (idempotent).
+  for (const [key, g] of groups) {
+    const merchant = merchantByKey.get(key);
+    if (!merchant) continue;
+    for (const ids of chunk(g.transactionIds, 400)) {
+      await prisma.transaction.updateMany({
+        where: { id: { in: ids } },
+        data: { merchantId: merchant.id },
+      });
+    }
+  }
+
+  return { merchantsAnalyzed, merchantByKey };
+}
+
 /**
  * Full detection pass (docs/HLD.md §3.2–3.3), idempotent across all stored
- * transactions. Rules engine -> Gemini merchant analysis (cached) -> link
- * transactions -> create/update Subscription rows (respecting user rejections).
+ * transactions. Names/classifies every merchant (Stage A), then the deterministic
+ * rules engine finds recurring charges and creates/updates Subscription rows for
+ * merchants Gemini judged to be genuine subscriptions (respecting user rejections).
  */
 export async function detectSubscriptions(): Promise<DetectionSummary> {
   const transactions = await prisma.transaction.findMany({
@@ -44,62 +162,22 @@ export async function detectSubscriptions(): Promise<DetectionSummary> {
       rawDescription: t.rawDescription,
     }))
   );
+  const cadenceByKey = new Map<string, SubscriptionCadence>(
+    candidates.map((c) => [c.key, c.cadence])
+  );
 
-  if (candidates.length === 0) {
-    return { candidates: 0, merchantsAnalyzed: 0, subscriptions: [] };
-  }
+  // Stage A: name & classify every merchant, link all transactions.
+  const { merchantsAnalyzed, merchantByKey } = await enrichMerchants(
+    transactions.map((t) => ({
+      id: t.id,
+      amount: Number(t.amount),
+      rawDescription: t.rawDescription,
+      date: t.date,
+    })),
+    cadenceByKey
+  );
 
-  // --- Merchant cache: reuse existing analyses, only ask Gemini about new keys.
-  const keys = candidates.map((c) => c.key);
-  const existingMerchants = await prisma.merchant.findMany({
-    where: { rawPattern: { in: keys } },
-  });
-  const merchantByKey = new Map(existingMerchants.map((m) => [m.rawPattern, m]));
-
-  const unanalyzed = candidates.filter((c) => !merchantByKey.has(c.key));
-  let merchantsAnalyzed = 0;
-
-  if (unanalyzed.length > 0) {
-    const analyses: MerchantAnalysis[] = await analyzeMerchants(
-      unanalyzed.map((c) => ({
-        key: c.key,
-        sampleDescription: c.sampleDescription,
-        amount: c.amount,
-        cadence: c.cadence,
-      }))
-    );
-    const analysisByKey = new Map(analyses.map((a) => [a.rawPattern, a]));
-
-    for (const cand of unanalyzed) {
-      const a = analysisByKey.get(cand.key);
-      if (!a) continue; // analysis failed for this merchant; leave unanalyzed
-      const merchant = await prisma.merchant.create({
-        data: {
-          rawPattern: cand.key,
-          normalizedName: a.normalizedName,
-          description: a.description,
-          category: a.category,
-          isSubscriptionService: a.isSubscription,
-        },
-      });
-      merchantByKey.set(cand.key, merchant);
-      merchantsAnalyzed++;
-    }
-  }
-
-  // --- Link transactions in each candidate group to their merchant.
-  for (const cand of candidates) {
-    const merchant = merchantByKey.get(cand.key);
-    if (!merchant) continue;
-    for (const group of chunk(cand.transactionIds, 400)) {
-      await prisma.transaction.updateMany({
-        where: { id: { in: group } },
-        data: { merchantId: merchant.id },
-      });
-    }
-  }
-
-  // --- Create/update Subscription rows for genuine subscription merchants.
+  // Stage B: create/update Subscription rows for genuine subscription merchants.
   const result: DetectedSubscription[] = [];
 
   for (const cand of candidates) {

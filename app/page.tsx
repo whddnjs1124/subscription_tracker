@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader, StatCard, EmptyState, Card, CategoryBadge } from "@/components/ui";
 import { CategoryDonut, MonthlyTrend } from "@/components/charts";
 import { TransactionList } from "@/components/transaction-list";
+import { ResetButton } from "@/components/reset-button";
 import { formatCurrency, formatDate, monthlyCost } from "@/lib/format";
 import { categoryBreakdown, monthlyTrend } from "@/lib/analytics";
 
@@ -80,12 +81,17 @@ export default async function DashboardPage() {
         title="Dashboard"
         subtitle="Your recurring subscriptions at a glance."
         action={
-          <Link
-            href="/upload"
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-          >
-            Upload statement
-          </Link>
+          <div className="flex items-center gap-3">
+            {(subscriptions.length > 0 || transactions.length > 0) && (
+              <ResetButton />
+            )}
+            <Link
+              href="/upload"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+            >
+              Upload statement
+            </Link>
+          </div>
         }
       />
 

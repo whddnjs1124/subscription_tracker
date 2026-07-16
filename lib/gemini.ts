@@ -109,30 +109,37 @@ export interface MerchantAnalysisInput {
   key: string; // merchant grouping key (echoed back as rawPattern)
   sampleDescription: string;
   amount: number;
-  cadence: string;
+  cadence: string; // "weekly" | "monthly" | "yearly" | "one-time"
+  occurrences?: number; // how many times this merchant appears
 }
 
 /**
- * Stage 2 of detection: given recurring-charge candidates, have Gemini
- * normalize each merchant name, describe it, categorize it, and judge whether
- * it is a genuine subscription service. Batched into one call. See HLD §3.2.
+ * Identify every merchant on a statement: normalize its name, describe it,
+ * categorize it, and judge whether it is a genuine subscription. Batched into
+ * one call. Used both to name ALL imported transactions and to classify
+ * recurring-charge candidates. See HLD §3.2.
  */
 export async function analyzeMerchants(
   inputs: MerchantAnalysisInput[]
 ): Promise<MerchantAnalysis[]> {
   if (inputs.length === 0) return [];
 
-  const prompt = `You are analyzing recurring charges found on a bank statement.
-For each merchant below, return:
+  const prompt = `You are labeling charges from a bank statement. Each entry below is one
+distinct merchant/payee (some are recurring, some are one-time purchases).
+For each, return:
 - rawPattern: echo back the given "key" EXACTLY and unchanged.
-- normalizedName: the clean, human brand name (e.g. "SPOTIFY USA 8778774166 NY" -> "Spotify").
-- description: a short (max ~8 word) plain-English description of what the service is.
+- normalizedName: the clean, human brand name. Resolve messy or payment-processor
+  descriptions to the ACTUAL merchant, e.g.
+  "SPOTIFY USA 8778774166 NY" -> "Spotify";
+  "PAYPAL DES:PURCHASE ID:RIOTGAMESIN INDN:JONGWON YOON" -> "Riot Games";
+  "SQ *BLUE BOTTLE COFFEE" -> "Blue Bottle Coffee".
+  If you truly cannot tell the underlying merchant, use the clearest short label.
+- description: a short (max ~8 word) plain-English description of the merchant/service.
 - category: one of ${JSON.stringify(MERCHANT_CATEGORIES)}.
 - isSubscription: true ONLY if this is a genuine recurring subscription to a service
   (streaming, software, gym, phone plan, internet, utilities, news, meal-kit, etc.).
-  Set it FALSE for recurring charges that are NOT subscription services, such as
-  credit-card or loan autopayments, transfers, ATM withdrawals, rent, or routine
-  purchases at a store/restaurant/gas station.
+  Set it FALSE for one-time purchases (games, shopping, food, gas), credit-card or
+  loan autopayments, transfers, ATM withdrawals, and rent.
 
 Merchants:
 ${JSON.stringify(
@@ -141,6 +148,7 @@ ${JSON.stringify(
     example: i.sampleDescription,
     amount: i.amount,
     cadence: i.cadence,
+    occurrences: i.occurrences ?? 1,
   })),
   null,
   2

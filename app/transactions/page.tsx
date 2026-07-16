@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { PageHeader, StatCard, EmptyState } from "@/components/ui";
 import { TransactionList } from "@/components/transaction-list";
+import { ResetButton } from "@/components/reset-button";
 import { formatCurrency } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ export default async function TransactionsPage() {
       <PageHeader
         title="Transactions"
         subtitle="Every expense imported from your statements."
+        action={<ResetButton />}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4">

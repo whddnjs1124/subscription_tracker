@@ -12,12 +12,21 @@ interface ImportBody {
   bankGuess?: string | null;
   // PDF path: transactions already extracted at the upload step.
   transactions?: { date: string; amount: number; rawDescription: string }[];
+  // When importing several files, skip detection here and run it once afterward
+  // via /api/detect (avoids repeated Gemini calls per file).
+  skipDetection?: boolean;
 }
 
 export async function POST(req: Request) {
   try {
-    const { fileName, csvText, mapping, transactions, bankGuess }: ImportBody =
-      await req.json();
+    const {
+      fileName,
+      csvText,
+      mapping,
+      transactions,
+      bankGuess,
+      skipDetection,
+    }: ImportBody = await req.json();
 
     let result;
     if (transactions && transactions.length >= 0 && !csvText) {
@@ -40,6 +49,11 @@ export async function POST(req: Request) {
         { error: "Nothing to import." },
         { status: 400 }
       );
+    }
+
+    // Part of a multi-file batch: caller runs detection once via /api/detect.
+    if (skipDetection) {
+      return NextResponse.json(result);
     }
 
     // Run detection over all stored transactions. Non-fatal if Gemini fails.
