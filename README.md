@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sub Tracker
 
-## Getting Started
+Find and manage the recurring subscriptions hiding in your bank statements.
 
-First, run the development server:
+Upload a bank transaction CSV (Bank of America, Chase, or any US bank export) and
+Sub Tracker detects your recurring subscriptions — Spotify, Netflix, utilities,
+internet, gym, and more — using a two-stage pipeline: a deterministic rules engine
+finds recurring-charge candidates, then Google's Gemini normalizes each merchant
+name, describes it, categorizes it, and confirms whether it's genuinely a
+subscription (so a monthly credit-card autopay or a weekly grocery run is *not*
+flagged). One-off purchases are deliberately ignored.
+
+## Features
+
+- **CSV import with AI column mapping** — any bank format works; Gemini maps the
+  date/description/amount columns, with a header-name heuristic fallback if the AI
+  is unavailable. Re-uploading the same file is a safe no-op (content-hash dedupe).
+- **Two-stage subscription detection** — a free, deterministic rules engine
+  (cadence + amount stability) narrows candidates before any AI call; results are
+  cached per merchant so the same merchant is never analyzed twice.
+- **Dashboard** — monthly total, active count, category donut, monthly-spend trend,
+  and a subscription list sorted by next billing date with "due soon" badges.
+- **Subscription detail** — full payment history, automatic price-increase
+  detection, rename / cancel / delete / notes.
+- **Insights** — deterministic analysis (overlapping services, possibly-unused
+  subscriptions, most expensive) plus an on-demand, cached AI briefing.
+- **Demo mode** — `npm run db:seed` loads a rich, deterministic dataset (no API key
+  needed) for an instant tour.
+
+## Stack
+
+Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma + SQLite ·
+Recharts · Google Gemini (`@google/genai`).
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+
+# Set your Gemini API key (get one at https://aistudio.google.com)
+echo 'GEMINI_API_KEY=your_key_here' > .env.local
+
+# Create the local SQLite database
+npx prisma migrate dev
+
+# (optional) load demo data — no API key required
+npm run db:seed
+
+npm run dev            # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open `/upload` to import a statement, or start from the seeded dashboard.
+Sample bank CSVs live in `fixtures/`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run db:migrate` | Apply Prisma migrations |
+| `npm run db:seed` | Load deterministic demo data |
+| `npm run db:studio` | Inspect the database |
 
-## Learn More
+## Notes
 
-To learn more about Next.js, take a look at the following resources:
+- The Gemini free tier is rate-limited (~20 requests/day for `gemini-3.5-flash`).
+  The app degrades gracefully when the quota is hit: imports still work via the
+  heuristic column mapping, and subscription detection re-runs idempotently on the
+  next upload.
+- All Gemini and database access is server-side only; the API key is never exposed
+  to the browser.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Documentation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [`docs/PRD.md`](docs/PRD.md) — product requirements
+- [`docs/HLD.md`](docs/HLD.md) — architecture, data model, detection pipeline
+- [`CLAUDE.md`](CLAUDE.md) — implementation notes and conventions

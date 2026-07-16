@@ -1,0 +1,388 @@
+"use client";
+
+import { useState, useRef, type DragEvent } from "react";
+import Link from "next/link";
+import { PageHeader, Card, CategoryBadge } from "@/components/ui";
+import { formatCurrency, formatDate } from "@/lib/format";
+import type { ColumnMapping } from "@/lib/types";
+import { ManualAddForm } from "@/components/manual-add-form";
+
+type Status = "idle" | "analyzing" | "preview" | "importing" | "done" | "error";
+
+interface Preview {
+  fileName: string;
+  mapping: ColumnMapping;
+  mappingSource: "ai" | "heuristic";
+  totalRows: number;
+  spendCount: number;
+  spendPreview: { date: string; amount: number; rawDescription: string }[];
+}
+
+interface DetectedSub {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  amount: number;
+  cadence: string;
+  nextBillingEstimate: string;
+  isNew: boolean;
+}
+
+interface ImportResult {
+  uploadId: string;
+  parsed: number;
+  imported: number;
+  skipped: number;
+  detection: {
+    candidates: number;
+    merchantsAnalyzed: number;
+    subscriptions: DetectedSub[];
+    error?: string;
+  };
+}
+
+export default function UploadPage() {
+  const [status, setStatus] = useState<Status>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [csvText, setCsvText] = useState("");
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [rejected, setRejected] = useState<Set<string>>(new Set());
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function reset() {
+    setStatus("idle");
+    setError(null);
+    setCsvText("");
+    setPreview(null);
+    setResult(null);
+    setRejected(new Set());
+  }
+
+  async function rejectSub(id: string) {
+    setRejected((prev) => new Set(prev).add(id));
+    await fetch(`/api/subscriptions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "rejected" }),
+    });
+  }
+
+  async function handleFile(file: File) {
+    setError(null);
+    setStatus("analyzing");
+    try {
+      const text = await file.text();
+      setCsvText(text);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, csvText: text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Analysis failed.");
+      setPreview(data);
+      setStatus("preview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setStatus("error");
+    }
+  }
+
+  async function confirmImport() {
+    if (!preview) return;
+    setStatus("importing");
+    setError(null);
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: preview.fileName,
+          csvText,
+          mapping: preview.mapping,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import failed.");
+      setResult(data);
+      setStatus("done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setStatus("error");
+    }
+  }
+
+  function onDrop(e: DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        title="Upload statement"
+        subtitle="Import a bank transaction CSV to detect subscriptions."
+      />
+
+      {(status === "idle" || status === "analyzing") && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          className={[
+            "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 text-center transition-colors",
+            dragOver
+              ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
+              : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-600",
+          ].join(" ")}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+          />
+          {status === "analyzing" ? (
+            <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
+              Analyzing your statement with AI…
+            </p>
+          ) : (
+            <>
+              <p className="text-base font-medium">
+                Drop a bank CSV here, or click to browse
+              </p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                We detect the columns automatically — any US bank export works.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {status === "preview" && preview && (
+        <div className="flex flex-col gap-5">
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold">{preview.fileName}</h2>
+              {preview.mapping.bankGuess && (
+                <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                  {preview.mapping.bankGuess}
+                </span>
+              )}
+            </div>
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+              <MapField label="Date column" value={preview.mapping.dateColumn} />
+              <MapField
+                label="Description"
+                value={preview.mapping.descriptionColumn}
+              />
+              <MapField
+                label="Amount column"
+                value={preview.mapping.amountColumn}
+              />
+              <MapField
+                label="Spend rows"
+                value={`${preview.spendCount} of ${preview.totalRows}`}
+              />
+            </dl>
+            {preview.mappingSource === "heuristic" && (
+              <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+                AI mapping was unavailable — columns were matched by name.
+                Double-check the preview below before importing.
+              </p>
+            )}
+          </Card>
+
+          <Card className="overflow-x-auto">
+            <p className="mb-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              Preview of detected spend
+            </p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                  <th className="pb-2 font-medium">Date</th>
+                  <th className="pb-2 font-medium">Description</th>
+                  <th className="pb-2 text-right font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.spendPreview.map((t, i) => (
+                  <tr
+                    key={i}
+                    className="border-t border-zinc-100 dark:border-zinc-800"
+                  >
+                    <td className="py-2 tabular-nums text-zinc-500">{t.date}</td>
+                    <td className="py-2 pr-4">{t.rawDescription}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {formatCurrency(t.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+
+          <div className="flex gap-3">
+            <button
+              onClick={confirmImport}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+            >
+              Import {preview.spendCount} transactions
+            </button>
+            <button
+              onClick={reset}
+              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status === "importing" && (
+        <Card>
+          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
+            Importing transactions…
+          </p>
+        </Card>
+      )}
+
+      {status === "done" && result && (
+        <div className="flex flex-col gap-5">
+          <Card>
+            <h2 className="text-lg font-semibold">Import complete</h2>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              Imported <strong>{result.imported}</strong> new transactions
+              {result.skipped > 0 && (
+                <>
+                  {" "}
+                  and skipped <strong>{result.skipped}</strong> duplicates
+                </>
+              )}
+              . Detected <strong>{result.detection.subscriptions.length}</strong>{" "}
+              subscriptions from{" "}
+              <strong>{result.detection.candidates}</strong> recurring-charge
+              candidates.
+            </p>
+            {result.detection.error && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                Subscription detection was skipped ({result.detection.error}).
+                Your transactions were saved — re-upload later to detect them.
+              </p>
+            )}
+          </Card>
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+              Detected subscriptions — reject anything that isn&apos;t yours
+            </h3>
+            <div className="flex flex-col gap-2">
+              {result.detection.subscriptions.map((s) => {
+                const isRejected = rejected.has(s.id);
+                return (
+                  <Card
+                    key={s.id}
+                    className={isRejected ? "opacity-50" : undefined}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-medium ${isRejected ? "line-through" : ""}`}
+                          >
+                            {s.name}
+                          </span>
+                          <CategoryBadge category={s.category} />
+                          {s.isNew && !isRejected && (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                              new
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-sm text-zinc-500 dark:text-zinc-400">
+                          {s.description} · next {formatDate(s.nextBillingEstimate)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <span className="tabular-nums font-medium">
+                          {formatCurrency(s.amount)}
+                          <span className="text-xs text-zinc-400">
+                            /{s.cadence.replace("ly", "")}
+                          </span>
+                        </span>
+                        {!isRejected && (
+                          <button
+                            onClick={() => rejectSub(s.id)}
+                            className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:border-rose-300 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-300"
+                          >
+                            Reject
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+
+          <ManualAddForm />
+
+          <div className="flex gap-3">
+            <Link
+              href="/"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+            >
+              View dashboard
+            </Link>
+            <button
+              onClick={reset}
+              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Upload another
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status === "error" && (
+        <Card className="border-rose-300 dark:border-rose-800">
+          <h2 className="font-semibold text-rose-600 dark:text-rose-400">
+            Something went wrong
+          </h2>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+            {error}
+          </p>
+          <button
+            onClick={reset}
+            className="mt-4 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Try again
+          </button>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MapField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-zinc-400">{label}</dt>
+      <dd className="mt-0.5 font-medium">{value}</dd>
+    </div>
+  );
+}

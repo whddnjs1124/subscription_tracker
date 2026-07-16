@@ -12,15 +12,64 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Chart palette — validated categorical hues (see dataviz skill).
+   Values swap for dark mode so Recharts SVG fills follow the theme. */
+:root {
+  --cat-entertainment: #2a78d6;
+  --cat-telecom: #e34948;
+  --cat-utilities: #eda100;
+  --cat-software: #1baf7a;
+  --cat-fitness: #008300;
+  --cat-food: #eb6834;
+  --cat-news: #4a3aa7;
+  --cat-finance: #e87ba4;
+  --cat-other: #898781;
+
+  --chart-line: #2a78d6;
+  --chart-grid: #e1e0d9;
+  --chart-axis: #898781;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --cat-entertainment: #3987e5;
+    --cat-telecom: #e66767;
+    --cat-utilities: #c98500;
+    --cat-software: #199e70;
+    --cat-fitness: #008300;
+    --cat-food: #d95926;
+    --cat-news: #9085e9;
+    --cat-finance: #d55181;
+    --cat-other: #898781;
+
+    --chart-line: #3987e5;
+    --chart-grid: #2c2c2a;
+    --chart-axis: #898781;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-zinc-300, #d4d4d8);
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.input:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 1px #10b981;
+}
+@media (prefers-color-scheme: dark) {
+  .input {
+    border-color: #3f3f46;
+  }
 }
