@@ -7,7 +7,14 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import type { ColumnMapping } from "@/lib/types";
 import { ManualAddForm } from "@/components/manual-add-form";
 
-type Status = "idle" | "analyzing" | "preview" | "importing" | "done" | "error";
+type Status =
+  | "idle"
+  | "selected"
+  | "analyzing"
+  | "preview"
+  | "importing"
+  | "done"
+  | "error";
 
 interface SpendRow {
   date: string;
@@ -54,6 +61,7 @@ interface ImportResult {
 export default function UploadPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [csvText, setCsvText] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -64,6 +72,7 @@ export default function UploadPage() {
   function reset() {
     setStatus("idle");
     setError(null);
+    setSelectedFile(null);
     setCsvText("");
     setPreview(null);
     setResult(null);
@@ -79,9 +88,10 @@ export default function UploadPage() {
     });
   }
 
-  async function handleFile(file: File) {
+  // Step 1: just hold the file and validate its type — no AI call yet, so the
+  // user can confirm they picked the right file before analyzing.
+  function selectFile(file: File) {
     setError(null);
-
     const name = file.name.toLowerCase();
     const isCsv =
       name.endsWith(".csv") ||
@@ -98,7 +108,19 @@ export default function UploadPage() {
       setStatus("error");
       return;
     }
+    setSelectedFile(file);
+    setStatus("selected");
+  }
 
+  // Step 2: the user confirmed — now run the AI analysis.
+  async function analyzeFile() {
+    const file = selectedFile;
+    if (!file) return;
+    const isPdf =
+      file.name.toLowerCase().endsWith(".pdf") ||
+      file.type === "application/pdf";
+
+    setError(null);
     setStatus("analyzing");
     try {
       let res: Response;
@@ -161,17 +183,29 @@ export default function UploadPage() {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+    if (file) selectFile(file);
   }
 
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
         title="Upload statement"
-        subtitle="Import a bank transaction CSV to detect subscriptions."
+        subtitle="Import a bank statement (CSV or PDF) to detect subscriptions."
       />
 
-      {(status === "idle" || status === "analyzing") && (
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.pdf,text/csv,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) selectFile(file);
+          e.target.value = ""; // allow re-picking the same file
+        }}
+      />
+
+      {status === "idle" && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -187,32 +221,63 @@ export default function UploadPage() {
               : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-600",
           ].join(" ")}
         >
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".csv,.pdf,text/csv,application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
-          />
-          {status === "analyzing" ? (
-            <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-              Reading your statement with AI…
-            </p>
-          ) : (
-            <>
-              <p className="text-base font-medium">
-                Drop a bank CSV or PDF statement here, or click to browse
-              </p>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                CSV columns are mapped automatically; PDF statements are read
-                with AI. Any US bank works.
-              </p>
-            </>
-          )}
+          <p className="text-base font-medium">
+            Drop a bank CSV or PDF statement here, or click to browse
+          </p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Nothing is analyzed until you review the file and click Analyze.
+          </p>
         </div>
+      )}
+
+      {status === "selected" && selectedFile && (
+        <div className="flex flex-col gap-4">
+          <Card>
+            <p className="mb-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              Ready to analyze — is this the right file?
+            </p>
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-10 w-12 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                  fileKind(selectedFile) === "PDF"
+                    ? "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+                    : "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400"
+                }`}
+              >
+                {fileKind(selectedFile)}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-medium">{selectedFile.name}</p>
+                <p className="text-xs text-zinc-400">
+                  {formatSize(selectedFile.size)}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <div className="flex gap-3">
+            <button
+              onClick={analyzeFile}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+            >
+              Analyze file
+            </button>
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Choose a different file
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status === "analyzing" && (
+        <Card>
+          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
+            Reading your statement with AI…
+          </p>
+        </Card>
       )}
 
       {status === "preview" && preview && (
@@ -447,4 +512,17 @@ function MapField({ label, value }: { label: string; value: string }) {
       <dd className="mt-0.5 font-medium">{value}</dd>
     </div>
   );
+}
+
+function fileKind(file: File): "PDF" | "CSV" {
+  return file.name.toLowerCase().endsWith(".pdf") ||
+    file.type === "application/pdf"
+    ? "PDF"
+    : "CSV";
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
