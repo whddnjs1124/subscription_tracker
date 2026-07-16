@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getUserId } from "@/lib/session";
 import { PageHeader, StatCard, EmptyState, Card, CategoryBadge } from "@/components/ui";
 import { CategoryDonut, MonthlyTrend } from "@/components/charts";
 import { TransactionList } from "@/components/transaction-list";
@@ -12,13 +14,17 @@ export const dynamic = "force-dynamic";
 const DUE_SOON_DAYS = 7;
 
 export default async function DashboardPage() {
+  const userId = await getUserId();
+  if (!userId) redirect("/login");
+
   const [subscriptions, transactions] = await Promise.all([
     prisma.subscription.findMany({
-      where: { status: "active" },
+      where: { userId, status: "active" },
       include: { merchant: true },
       orderBy: { nextBillingEstimate: "asc" },
     }),
     prisma.transaction.findMany({
+      where: { userId },
       orderBy: { date: "desc" },
       include: {
         merchant: {

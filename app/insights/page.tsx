@@ -1,7 +1,9 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader, StatCard, Card, EmptyState, CategoryBadge } from "@/components/ui";
 import { InsightNarrative } from "@/components/insight-narrative";
 import { computeInsights } from "@/lib/insights";
+import { getUserId } from "@/lib/session";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +13,10 @@ function monthKey(d = new Date()): string {
 }
 
 export default async function InsightsPage() {
-  const stats = await computeInsights();
+  const userId = await getUserId();
+  if (!userId) redirect("/login");
+
+  const stats = await computeInsights(userId);
 
   if (stats.activeCount === 0) {
     return (
@@ -31,7 +36,7 @@ export default async function InsightsPage() {
   }
 
   const cached = await prisma.insight.findUnique({
-    where: { month: monthKey() },
+    where: { userId_month: { userId, month: monthKey() } },
   });
 
   return (

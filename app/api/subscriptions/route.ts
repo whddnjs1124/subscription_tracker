@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { nextBilling } from "@/lib/detection";
+import { getUserId } from "@/lib/session";
 import type { SubscriptionCadence } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -18,6 +19,11 @@ interface CreateBody {
 /** Manually add a subscription the detector missed. */
 export async function POST(req: Request) {
   try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
+
     const { name, amount, cadence, category, description }: CreateBody =
       await req.json();
 
@@ -40,7 +46,7 @@ export async function POST(req: Request) {
     const rawPattern = `MANUAL:${name.trim().toUpperCase()}`;
 
     const merchant = await prisma.merchant.upsert({
-      where: { rawPattern },
+      where: { userId_rawPattern: { userId, rawPattern } },
       update: {
         normalizedName: name.trim(),
         description: description?.trim() || "Manually added subscription",
@@ -48,6 +54,7 @@ export async function POST(req: Request) {
         isSubscriptionService: true,
       },
       create: {
+        userId,
         rawPattern,
         normalizedName: name.trim(),
         description: description?.trim() || "Manually added subscription",
@@ -58,6 +65,7 @@ export async function POST(req: Request) {
 
     const subscription = await prisma.subscription.create({
       data: {
+        userId,
         merchantId: merchant.id,
         amount,
         cadence,

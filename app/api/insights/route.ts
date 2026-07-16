@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { computeInsights, statsSummary } from "@/lib/insights";
 import { generateInsightNarrative } from "@/lib/gemini";
+import { getUserId } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -15,18 +16,25 @@ function monthKey(d = new Date()): string {
  */
 export async function POST(req: Request) {
   try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const refresh = body?.refresh === true;
     const month = monthKey();
 
     if (!refresh) {
-      const cached = await prisma.insight.findUnique({ where: { month } });
+      const cached = await prisma.insight.findUnique({
+        where: { userId_month: { userId, month } },
+      });
       if (cached) {
         return NextResponse.json({ content: cached.content, cached: true });
       }
     }
 
-    const stats = await computeInsights();
+    const stats = await computeInsights(userId);
     if (stats.activeCount === 0) {
       return NextResponse.json(
         { error: "No active subscriptions to analyze yet." },
@@ -37,9 +45,9 @@ export async function POST(req: Request) {
     const content = await generateInsightNarrative(statsSummary(stats));
 
     const saved = await prisma.insight.upsert({
-      where: { month },
+      where: { userId_month: { userId, month } },
       update: { content, generatedAt: new Date() },
-      create: { month, content },
+      create: { userId, month, content },
     });
 
     return NextResponse.json({ content: saved.content, cached: false });

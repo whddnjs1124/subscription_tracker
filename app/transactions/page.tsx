@@ -1,13 +1,19 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PageHeader, StatCard, EmptyState } from "@/components/ui";
 import { TransactionList } from "@/components/transaction-list";
 import { ResetButton } from "@/components/reset-button";
+import { getUserId } from "@/lib/session";
 import { formatCurrency } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function TransactionsPage() {
+  const userId = await getUserId();
+  if (!userId) redirect("/login");
+
   const transactions = await prisma.transaction.findMany({
+    where: { userId },
     orderBy: { date: "desc" },
     include: {
       merchant: { select: { normalizedName: true, isSubscriptionService: true } },

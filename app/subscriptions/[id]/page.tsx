@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getUserId } from "@/lib/session";
 import { PageHeader, Card, CategoryBadge } from "@/components/ui";
 import { SubscriptionActions } from "@/components/subscription-actions";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -36,13 +37,21 @@ export default async function SubscriptionDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const userId = await getUserId();
+  if (!userId) redirect("/login");
+
   const { id } = await params;
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id },
+  const subscription = await prisma.subscription.findFirst({
+    where: { id, userId },
     include: {
       merchant: {
-        include: { transactions: { orderBy: { date: "desc" } } },
+        include: {
+          transactions: {
+            where: { userId },
+            orderBy: { date: "desc" },
+          },
+        },
       },
     },
   });

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: "grid" },
@@ -61,7 +62,7 @@ function Icon({ name }: { name: string }) {
   }
 }
 
-export function Sidebar() {
+export function Sidebar({ email }: { email: string }) {
   const pathname = usePathname();
 
   const isActive = (href: string) =>
@@ -101,6 +102,37 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Mobile: compact sign-out icon in the top bar */}
+      <button
+        onClick={() => signOut({ callbackUrl: "/login" })}
+        aria-label="Sign out"
+        className="flex items-center rounded-lg px-3 py-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 sm:hidden dark:text-zinc-400 dark:hover:bg-zinc-900"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
+
+      {/* Desktop: account footer */}
+      <div className="mt-auto hidden flex-col gap-2 border-t border-zinc-200 pt-4 sm:flex dark:border-zinc-800">
+        <p className="truncate px-2 text-xs text-zinc-400" title={email}>
+          {email}
+        </p>
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="M16 17l5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+          Sign out
+        </button>
+      </div>
     </aside>
   );
 }

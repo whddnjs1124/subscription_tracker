@@ -6,12 +6,15 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  // Dev CLI: full wipe of EVERY user's data and accounts. (The in-app
+  // "Clear all data" button only clears the signed-in user's data.)
   await prisma.subscription.deleteMany();
   await prisma.transaction.deleteMany();
   await prisma.merchant.deleteMany();
   await prisma.insight.deleteMany();
   await prisma.upload.deleteMany();
-  console.log("All data cleared. The dashboard is now empty.");
+  await prisma.user.deleteMany();
+  console.log("All data and accounts cleared.");
 }
 
 main()

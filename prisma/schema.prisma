@@ -2,6 +2,10 @@
 // Postgres (Neon) for both local dev and Vercel. Set DATABASE_URL to your Neon
 // connection string in .env locally and in Vercel's env vars. Schema is synced
 // with `prisma db push` (see npm run db:push) — no migration files to manage.
+//
+// Multi-user: every row is owned by a User. All queries filter by userId, and
+// the dedupe/cache uniques are per-user (two users can have the same charge or
+// merchant pattern). Auth is email+password via Auth.js (see auth.ts).
 
 generator client {
   provider = "prisma-client-js"
@@ -12,33 +16,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  passwordHash  String
+  createdAt     DateTime       @default(now())
+  uploads       Upload[]
+  transactions  Transaction[]
+  merchants     Merchant[]
+  subscriptions Subscription[]
+  insights      Insight[]
+}
+
 model Upload {
   id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   fileName         String
   bankGuess        String?
   importedAt       DateTime      @default(now())
   transactionCount Int           @default(0)
   transactions     Transaction[]
+
+  @@index([userId])
 }
 
 model Transaction {
   id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   uploadId       String
   upload         Upload    @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   date           DateTime
   amount         Decimal // spend normalized to a positive number
   rawDescription String
-  dedupeHash     String    @unique // sha256(date|amount|rawDescription)
+  dedupeHash     String // sha256(date|amount|rawDescription)
   merchantId     String?
   merchant       Merchant? @relation(fields: [merchantId], references: [id])
 
+  @@unique([userId, dedupeHash]) // re-uploading the same file is a no-op, per user
   @@index([merchantId])
+  @@index([userId])
   @@index([date])
 }
 
 model Merchant {
   id                    String         @id @default(cuid())
-  rawPattern            String         @unique // grouping key (normalized description prefix)
+  userId                String
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rawPattern            String // grouping key (normalized description prefix)
   normalizedName        String
   description           String
   category              String // entertainment | utilities | software | telecom | ...
@@ -46,10 +73,15 @@ model Merchant {
   analyzedAt            DateTime       @default(now())
   transactions          Transaction[]
   subscriptions         Subscription[]
+
+  @@unique([userId, rawPattern]) // merchant cache is per-user (avoids leaking descriptors)
+  @@index([userId])
 }
 
 model Subscription {
   id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   merchantId          String
   merchant            Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   amount              Decimal // most recent charge amount
@@ -61,13 +93,19 @@ model Subscription {
   isManual            Boolean  @default(false)
   note                String?
 
+  @@index([userId])
   @@index([merchantId])
   @@index([status])
 }
 
 model Insight {
   id          String   @id @default(cuid())
-  month       String   @unique // "2026-07"
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month       String // "2026-07"
   content     String // Gemini-generated markdown
   generatedAt DateTime @default(now())
+
+  @@unique([userId, month])
+  @@index([userId])
 }

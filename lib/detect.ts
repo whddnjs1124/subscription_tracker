@@ -54,7 +54,8 @@ interface KeyGroup {
  */
 async function enrichMerchants(
   txs: { id: string; amount: number; rawDescription: string; date: Date }[],
-  cadenceByKey: Map<string, SubscriptionCadence>
+  cadenceByKey: Map<string, SubscriptionCadence>,
+  userId: string
 ): Promise<{ merchantsAnalyzed: number; merchantByKey: Map<string, MerchantRow> }> {
   const groups = new Map<string, KeyGroup>();
   for (const tx of txs) {
@@ -83,7 +84,7 @@ async function enrichMerchants(
 
   const keys = [...groups.keys()];
   const existing = await prisma.merchant.findMany({
-    where: { rawPattern: { in: keys } },
+    where: { userId, rawPattern: { in: keys } },
   });
   const merchantByKey = new Map<string, MerchantRow>(
     existing.map((m) => [m.rawPattern, m])
@@ -116,6 +117,7 @@ async function enrichMerchants(
       if (!a) continue;
       const merchant = await prisma.merchant.create({
         data: {
+          userId,
           rawPattern: k,
           normalizedName: a.normalizedName,
           description: a.description,
@@ -134,7 +136,7 @@ async function enrichMerchants(
     if (!merchant) continue;
     for (const ids of chunk(g.transactionIds, 400)) {
       await prisma.transaction.updateMany({
-        where: { id: { in: ids } },
+        where: { userId, id: { in: ids } },
         data: { merchantId: merchant.id },
       });
     }
@@ -149,8 +151,11 @@ async function enrichMerchants(
  * rules engine finds recurring charges and creates/updates Subscription rows for
  * merchants Gemini judged to be genuine subscriptions (respecting user rejections).
  */
-export async function detectSubscriptions(): Promise<DetectionSummary> {
+export async function detectSubscriptions(
+  userId: string
+): Promise<DetectionSummary> {
   const transactions = await prisma.transaction.findMany({
+    where: { userId },
     select: { id: true, date: true, amount: true, rawDescription: true },
   });
 
@@ -174,7 +179,8 @@ export async function detectSubscriptions(): Promise<DetectionSummary> {
       rawDescription: t.rawDescription,
       date: t.date,
     })),
-    cadenceByKey
+    cadenceByKey,
+    userId
   );
 
   // Stage B: create/update Subscription rows for genuine subscription merchants.
@@ -186,7 +192,7 @@ export async function detectSubscriptions(): Promise<DetectionSummary> {
 
     const nextEstimate = nextBilling(cand.lastCharged, cand.cadence);
     const existing = await prisma.subscription.findFirst({
-      where: { merchantId: merchant.id, isManual: false },
+      where: { userId, merchantId: merchant.id, isManual: false },
     });
 
     if (existing) {
@@ -208,6 +214,7 @@ export async function detectSubscriptions(): Promise<DetectionSummary> {
     } else {
       const created = await prisma.subscription.create({
         data: {
+          userId,
           merchantId: merchant.id,
           amount: cand.amount,
           cadence: cand.cadence,

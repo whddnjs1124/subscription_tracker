@@ -37,9 +37,12 @@ const CADENCE_DAYS: Record<string, number> = {
  * Deterministic subscription insights computed directly from the database —
  * no AI required. The AI narrative (lib/gemini) is layered on top separately.
  */
-export async function computeInsights(now = new Date()): Promise<InsightStats> {
+export async function computeInsights(
+  userId: string,
+  now = new Date()
+): Promise<InsightStats> {
   const subscriptions = await prisma.subscription.findMany({
-    where: { status: "active" },
+    where: { userId, status: "active" },
     include: { merchant: true },
   });
 

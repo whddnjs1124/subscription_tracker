@@ -1,7 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+// Demo account the seed data belongs to. Log in with these to see the portfolio
+// dataset. (Multi-user: every row is owned by a user.)
+const DEMO_EMAIL = "demo@subtracker.app";
+const DEMO_PASSWORD = "demo1234";
 
 // Deterministic demo data — NO Gemini calls. Populates a realistic portfolio
 // dataset: 6 months of history, category overlaps, a price increase, and a
@@ -155,15 +161,23 @@ const DEMO: DemoSub[] = [
 ];
 
 async function main() {
-  console.log("Clearing existing data…");
-  await prisma.subscription.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.merchant.deleteMany();
-  await prisma.insight.deleteMany();
-  await prisma.upload.deleteMany();
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  const user = await prisma.user.upsert({
+    where: { email: DEMO_EMAIL },
+    update: {},
+    create: { email: DEMO_EMAIL, name: "Demo User", passwordHash },
+  });
+  const userId = user.id;
+
+  console.log("Clearing existing demo data…");
+  await prisma.subscription.deleteMany({ where: { userId } });
+  await prisma.transaction.deleteMany({ where: { userId } });
+  await prisma.merchant.deleteMany({ where: { userId } });
+  await prisma.insight.deleteMany({ where: { userId } });
+  await prisma.upload.deleteMany({ where: { userId } });
 
   const upload = await prisma.upload.create({
-    data: { fileName: "demo-seed.csv", bankGuess: "Demo Bank" },
+    data: { userId, fileName: "demo-seed.csv", bankGuess: "Demo Bank" },
   });
 
   let txCount = 0;
@@ -173,6 +187,7 @@ async function main() {
 
     const merchant = await prisma.merchant.create({
       data: {
+        userId,
         rawPattern: d.rawPattern,
         normalizedName: d.name,
         description: d.description,
@@ -188,6 +203,7 @@ async function main() {
       charges.push({ date, amount });
       await prisma.transaction.create({
         data: {
+          userId,
           uploadId: upload.id,
           merchantId: merchant.id,
           date,
@@ -203,6 +219,7 @@ async function main() {
     const last = charges[charges.length - 1];
     await prisma.subscription.create({
       data: {
+        userId,
         merchantId: merchant.id,
         amount: last.amount,
         cadence: "monthly",
@@ -220,8 +237,9 @@ async function main() {
   });
 
   console.log(
-    `Seeded ${DEMO.length} subscriptions and ${txCount} transactions.`
+    `Seeded ${DEMO.length} subscriptions and ${txCount} transactions for the demo account.`
   );
+  console.log(`Log in with:  ${DEMO_EMAIL}  /  ${DEMO_PASSWORD}`);
 }
 
 main()

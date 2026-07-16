@@ -31,7 +31,8 @@ export interface ImportResult {
 export async function importNormalized(
   transactions: NormalizedTransaction[],
   fileName: string,
-  bankGuess: string | null
+  bankGuess: string | null,
+  userId: string
 ): Promise<ImportResult> {
   // Deduplicate within the file itself first.
   const byHash = new Map<string, NormalizedTransaction>();
@@ -41,11 +42,11 @@ export async function importNormalized(
   }
   const allHashes = [...byHash.keys()];
 
-  // Find which hashes already exist in the DB.
+  // Find which hashes already exist for THIS user.
   const existing = new Set<string>();
   for (const group of chunk(allHashes, 400)) {
     const found = await prisma.transaction.findMany({
-      where: { dedupeHash: { in: group } },
+      where: { userId, dedupeHash: { in: group } },
       select: { dedupeHash: true },
     });
     for (const row of found) existing.add(row.dedupeHash);
@@ -55,6 +56,7 @@ export async function importNormalized(
 
   const upload = await prisma.upload.create({
     data: {
+      userId,
       fileName,
       bankGuess,
       transactionCount: toInsert.length,
@@ -64,6 +66,7 @@ export async function importNormalized(
   for (const group of chunk(toInsert, 400)) {
     await prisma.transaction.createMany({
       data: group.map(([h, tx]) => ({
+        userId,
         uploadId: upload.id,
         date: tx.date,
         amount: tx.amount,
@@ -85,9 +88,10 @@ export async function importNormalized(
 export async function importCsv(
   csvText: string,
   mapping: ColumnMapping,
-  fileName: string
+  fileName: string,
+  userId: string
 ): Promise<ImportResult> {
   const source = new CsvTransactionSource(csvText, mapping);
   const transactions = await source.parse();
-  return importNormalized(transactions, fileName, mapping.bankGuess);
+  return importNormalized(transactions, fileName, mapping.bankGuess, userId);
 }

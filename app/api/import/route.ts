@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { importCsv, importNormalized } from "@/lib/import";
 import { detectSubscriptions } from "@/lib/detect";
+import { getUserId } from "@/lib/session";
 import type { ColumnMapping } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,6 +20,11 @@ interface ImportBody {
 
 export async function POST(req: Request) {
   try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
+
     const {
       fileName,
       csvText,
@@ -40,10 +46,16 @@ export async function POST(req: Request) {
       result = await importNormalized(
         normalized,
         fileName ?? "statement.pdf",
-        bankGuess ?? null
+        bankGuess ?? null,
+        userId
       );
     } else if (csvText && mapping) {
-      result = await importCsv(csvText, mapping, fileName ?? "statement.csv");
+      result = await importCsv(
+        csvText,
+        mapping,
+        fileName ?? "statement.csv",
+        userId
+      );
     } else {
       return NextResponse.json(
         { error: "Nothing to import." },
@@ -58,7 +70,7 @@ export async function POST(req: Request) {
 
     // Run detection over all stored transactions. Non-fatal if Gemini fails.
     try {
-      const detection = await detectSubscriptions();
+      const detection = await detectSubscriptions(userId);
       return NextResponse.json({ ...result, detection });
     } catch (detErr) {
       const message =

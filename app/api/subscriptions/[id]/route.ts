@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getUserId } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -16,10 +17,16 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
     const { id } = await params;
     const { status, note, name }: PatchBody = await req.json();
 
-    const existing = await prisma.subscription.findUnique({ where: { id } });
+    const existing = await prisma.subscription.findFirst({
+      where: { id, userId },
+    });
     if (!existing) {
       return NextResponse.json(
         { error: "Subscription not found." },
@@ -59,8 +66,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+    }
     const { id } = await params;
-    await prisma.subscription.delete({ where: { id } });
+    // deleteMany with the userId guard: a no-op if the row isn't the user's.
+    await prisma.subscription.deleteMany({ where: { id, userId } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Delete failed.";
