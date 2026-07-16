@@ -1,12 +1,14 @@
 // Sub Tracker data model — see docs/HLD.md §2
-// SQLite locally; switch `provider` to "postgresql" at deploy time.
+// Postgres (Neon) for both local dev and Vercel. Set DATABASE_URL to your Neon
+// connection string in .env locally and in Vercel's env vars. Schema is synced
+// with `prisma db push` (see npm run db:push) — no migration files to manage.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

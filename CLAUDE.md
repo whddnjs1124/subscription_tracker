@@ -16,7 +16,7 @@ Purpose: personal use + portfolio. Single user for now; auth and cloud deploy co
 
 **Phases 1–5 complete and verified** — scaffold, CSV upload+import, detection pipeline, dashboard+charts+detail, and insights+demo-seed. `next build` and `tsc --noEmit` pass; all routes return 200 with data. Verified end-to-end with real Gemini calls: column mapping across two bank formats, subscription detection (recurring non-subscriptions like credit-card autopay correctly excluded by Gemini), merchant cache, dedupe, rejection persistence, dashboard/detail rendering, price-change detection, deterministic insights, and demo seed.
 
-**Only remaining (optional) work: cloud deploy** — switch Prisma datasource `provider` to `postgresql` (e.g. Neon), regenerate migrations, add Auth.js if multi-user is wanted, and deploy to Vercel with `GEMINI_API_KEY` + `DATABASE_URL` env vars. Not started; it's a user decision (needs their Vercel/Neon accounts).
+**Datasource is now Postgres (Neon), not SQLite** — `provider = "postgresql"` in `prisma/schema.prisma`, single `DATABASE_URL` for both local dev and Vercel. Schema is synced with `prisma db push` (`npm run db:push`); there are no migration files (the old SQLite migration was removed). `postinstall` runs `prisma generate` so Vercel builds the client. To deploy: create a Neon DB, put its connection string in `.env` locally + Vercel env vars, `npm run db:push` once to create tables, then deploy to Vercel with `GEMINI_API_KEY` + `DATABASE_URL` set. Auth.js is still not added (single-user; the /api/reset "Clear all data" button wipes the whole DB, so add a userId scope before going multi-user).
 
 **Not visually verified in a browser:** the Recharts charts (category donut, monthly trend) compile, server-render without error, and receive correct data, but this environment has no browser to eyeball the drawn SVG. Worth a quick look on first run.
 
@@ -25,7 +25,7 @@ Purpose: personal use + portfolio. Single user for now; auth and cloud deploy co
 Actual versions installed (differ from the docs' original guesses):
 - **Next.js 16.2** (not 15) + React 19 + Tailwind **v4** (`@import "tailwindcss"` in `app/globals.css`, no `tailwind.config.js`). Turbopack is the default builder.
 - **Prisma pinned to v6** (6.19.x), NOT v7. Prisma 7 dropped `url = env()` from the schema and now requires a native driver adapter (better-sqlite3/libsql) at runtime; on this machine's Node 26 those native modules risk having no prebuilds. v6 uses the documented `url = env("DATABASE_URL")` setup with a bundled query engine — no native deps. Do not bump Prisma to 7 without migrating to driver adapters + `prisma.config.ts`.
-- `DATABASE_URL="file:./dev.db"` lives in `.env` (Prisma CLI reads it); the Gemini key stays in `.env.local`. Both are gitignored, plus `*.db` / `prisma/dev.db*`.
+- `DATABASE_URL` (a Neon Postgres connection string) lives in `.env` (Prisma CLI reads it); the Gemini key stays in `.env.local`. Both are gitignored, plus `*.db` / `prisma/dev.db*`. The old `prisma/dev.db` SQLite file may still exist locally but is unused and ignored.
 
 Gemini SDK is **`@google/genai`** (v2.x, the current unified SDK), not the older `@google/generative-ai`. Model is **`gemini-3.5-flash`** (set in `lib/gemini.ts`) — `gemini-2.5-flash`/`-flash-lite` return 404 "no longer available to new users" for this API key. If the model 404s in future, run `ai.models.list()` and pick a current stable flash (e.g. `gemini-flash-latest`).
 
