@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PageHeader, StatCard, EmptyState, Card, CategoryBadge } from "@/components/ui";
 import { CategoryDonut, MonthlyTrend } from "@/components/charts";
+import { TransactionList } from "@/components/transaction-list";
 import { formatCurrency, formatDate, monthlyCost } from "@/lib/format";
 import { categoryBreakdown, monthlyTrend } from "@/lib/analytics";
 
@@ -17,7 +18,12 @@ export default async function DashboardPage() {
       orderBy: { nextBillingEstimate: "asc" },
     }),
     prisma.transaction.findMany({
-      include: { merchant: { select: { isSubscriptionService: true } } },
+      orderBy: { date: "desc" },
+      include: {
+        merchant: {
+          select: { normalizedName: true, isSubscriptionService: true },
+        },
+      },
     }),
   ]);
 
@@ -46,9 +52,27 @@ export default async function DashboardPage() {
     }))
   );
 
+  const recentTx = transactions.slice(0, 8).map((t) => ({
+    id: t.id,
+    date: t.date,
+    rawDescription: t.rawDescription,
+    amount: Number(t.amount),
+    merchantName: t.merchant?.normalizedName ?? null,
+    isSubscription: t.merchant?.isSubscriptionService ?? false,
+  }));
+
   const now = Date.now();
   const dueSoon = (d: Date) =>
     (d.getTime() - now) / (24 * 60 * 60 * 1000) <= DUE_SOON_DAYS;
+
+  const viewAllLink = (
+    <Link
+      href="/transactions"
+      className="text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+    >
+      View all {transactions.length} →
+    </Link>
+  );
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -80,14 +104,32 @@ export default async function DashboardPage() {
       </div>
 
       {subs.length === 0 ? (
-        <div className="mt-8">
-          <EmptyState
-            title="No subscriptions yet"
-            description="Upload a bank statement CSV and Sub Tracker will detect your recurring subscriptions automatically."
-            actionHref="/upload"
-            actionLabel="Upload your first statement"
-          />
-        </div>
+        transactions.length === 0 ? (
+          <div className="mt-8">
+            <EmptyState
+              title="No subscriptions yet"
+              description="Upload a bank statement (CSV or PDF) and Sub Tracker will detect your recurring subscriptions automatically."
+              actionHref="/upload"
+              actionLabel="Upload your first statement"
+            />
+          </div>
+        ) : (
+          <div className="mt-8">
+            <div className="mb-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+              Imported <strong>{transactions.length}</strong> transactions, but no
+              recurring subscriptions detected yet. Subscriptions show up when the
+              same charge repeats across months — try uploading a few months of
+              statements. Your imported expenses are listed below.
+            </div>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                Imported transactions
+              </h2>
+              {viewAllLink}
+            </div>
+            <TransactionList items={recentTx} />
+          </div>
+        )
       ) : (
         <>
           <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -141,6 +183,16 @@ export default async function DashboardPage() {
                 </Link>
               ))}
             </div>
+          </div>
+
+          <div className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                Recent transactions
+              </h2>
+              {viewAllLink}
+            </div>
+            <TransactionList items={recentTx} />
           </div>
         </>
       )}
