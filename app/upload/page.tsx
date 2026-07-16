@@ -9,13 +9,22 @@ import { ManualAddForm } from "@/components/manual-add-form";
 
 type Status = "idle" | "analyzing" | "preview" | "importing" | "done" | "error";
 
+interface SpendRow {
+  date: string;
+  amount: number;
+  rawDescription: string;
+}
+
 interface Preview {
+  source: "csv" | "pdf";
   fileName: string;
-  mapping: ColumnMapping;
-  mappingSource: "ai" | "heuristic";
+  mapping: ColumnMapping | null;
+  mappingSource: "ai" | "heuristic" | null;
+  bankGuess: string | null;
   totalRows: number;
   spendCount: number;
-  spendPreview: { date: string; amount: number; rawDescription: string }[];
+  spendPreview: SpendRow[];
+  transactions?: SpendRow[];
 }
 
 interface DetectedSub {
@@ -72,15 +81,40 @@ export default function UploadPage() {
 
   async function handleFile(file: File) {
     setError(null);
+
+    const name = file.name.toLowerCase();
+    const isCsv =
+      name.endsWith(".csv") ||
+      file.type === "text/csv" ||
+      file.type === "application/vnd.ms-excel";
+    const isPdf = name.endsWith(".pdf") || file.type === "application/pdf";
+    if (!isCsv && !isPdf) {
+      const ext = file.name.includes(".")
+        ? file.name.slice(file.name.lastIndexOf(".")).toUpperCase()
+        : "This";
+      setError(
+        `${ext} files aren't supported. Upload a bank CSV export or a PDF statement.`
+      );
+      setStatus("error");
+      return;
+    }
+
     setStatus("analyzing");
     try {
-      const text = await file.text();
-      setCsvText(text);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, csvText: text }),
-      });
+      let res: Response;
+      if (isPdf) {
+        const form = new FormData();
+        form.append("file", file);
+        res = await fetch("/api/upload", { method: "POST", body: form });
+      } else {
+        const text = await file.text();
+        setCsvText(text);
+        res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, csvText: text }),
+        });
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed.");
       setPreview(data);
@@ -96,14 +130,22 @@ export default function UploadPage() {
     setStatus("importing");
     setError(null);
     try {
+      const body =
+        preview.source === "pdf"
+          ? {
+              fileName: preview.fileName,
+              transactions: preview.transactions,
+              bankGuess: preview.bankGuess,
+            }
+          : {
+              fileName: preview.fileName,
+              csvText,
+              mapping: preview.mapping,
+            };
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: preview.fileName,
-          csvText,
-          mapping: preview.mapping,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed.");
@@ -148,7 +190,7 @@ export default function UploadPage() {
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.pdf,text/csv,application/pdf"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -157,15 +199,16 @@ export default function UploadPage() {
           />
           {status === "analyzing" ? (
             <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-              Analyzing your statement with AI…
+              Reading your statement with AI…
             </p>
           ) : (
             <>
               <p className="text-base font-medium">
-                Drop a bank CSV here, or click to browse
+                Drop a bank CSV or PDF statement here, or click to browse
               </p>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                We detect the columns automatically — any US bank export works.
+                CSV columns are mapped automatically; PDF statements are read
+                with AI. Any US bank works.
               </p>
             </>
           )}
@@ -177,27 +220,46 @@ export default function UploadPage() {
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">{preview.fileName}</h2>
-              {preview.mapping.bankGuess && (
-                <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  {preview.mapping.bankGuess}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {preview.source === "pdf" && (
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                    PDF · AI-read
+                  </span>
+                )}
+                {preview.bankGuess && (
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                    {preview.bankGuess}
+                  </span>
+                )}
+              </div>
             </div>
-            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-              <MapField label="Date column" value={preview.mapping.dateColumn} />
-              <MapField
-                label="Description"
-                value={preview.mapping.descriptionColumn}
-              />
-              <MapField
-                label="Amount column"
-                value={preview.mapping.amountColumn}
-              />
-              <MapField
-                label="Spend rows"
-                value={`${preview.spendCount} of ${preview.totalRows}`}
-              />
-            </dl>
+
+            {preview.source === "csv" && preview.mapping ? (
+              <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+                <MapField label="Date column" value={preview.mapping.dateColumn} />
+                <MapField
+                  label="Description"
+                  value={preview.mapping.descriptionColumn}
+                />
+                <MapField
+                  label="Amount column"
+                  value={preview.mapping.amountColumn}
+                />
+                <MapField
+                  label="Spend rows"
+                  value={`${preview.spendCount} of ${preview.totalRows}`}
+                />
+              </dl>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+                Read <strong>{preview.spendCount}</strong> spending transactions
+                from your PDF
+                {preview.totalRows > preview.spendCount &&
+                  ` (deposits and incoming payments excluded)`}
+                . Check the preview below before importing.
+              </p>
+            )}
+
             {preview.mappingSource === "heuristic" && (
               <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
                 AI mapping was unavailable — columns were matched by name.

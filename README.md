@@ -12,9 +12,10 @@ flagged). One-off purchases are deliberately ignored.
 
 ## Features
 
-- **CSV import with AI column mapping** — any bank format works; Gemini maps the
-  date/description/amount columns, with a header-name heuristic fallback if the AI
-  is unavailable. Re-uploading the same file is a safe no-op (content-hash dedupe).
+- **CSV & PDF import** — upload a bank CSV (Gemini maps the columns, with a
+  header-name heuristic fallback) or a **PDF statement** (text is extracted and
+  Gemini structures the transactions). Re-uploading the same file is a safe no-op
+  (content-hash dedupe).
 - **Two-stage subscription detection** — a free, deterministic rules engine
   (cadence + amount stability) narrows candidates before any AI call; results are
   cached per merchant so the same merchant is never analyzed twice.

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { importCsv } from "@/lib/import";
+import { importCsv, importNormalized } from "@/lib/import";
 import { detectSubscriptions } from "@/lib/detect";
 import type { ColumnMapping } from "@/lib/types";
 
@@ -9,28 +9,40 @@ interface ImportBody {
   fileName?: string;
   csvText?: string;
   mapping?: ColumnMapping;
+  bankGuess?: string | null;
+  // PDF path: transactions already extracted at the upload step.
+  transactions?: { date: string; amount: number; rawDescription: string }[];
 }
 
 export async function POST(req: Request) {
   try {
-    const { fileName, csvText, mapping }: ImportBody = await req.json();
+    const { fileName, csvText, mapping, transactions, bankGuess }: ImportBody =
+      await req.json();
 
-    if (!csvText || !mapping) {
+    let result;
+    if (transactions && transactions.length >= 0 && !csvText) {
+      const normalized = transactions
+        .map((t) => ({
+          date: new Date(t.date),
+          amount: t.amount,
+          rawDescription: t.rawDescription,
+        }))
+        .filter((t) => !isNaN(t.date.getTime()) && t.rawDescription);
+      result = await importNormalized(
+        normalized,
+        fileName ?? "statement.pdf",
+        bankGuess ?? null
+      );
+    } else if (csvText && mapping) {
+      result = await importCsv(csvText, mapping, fileName ?? "statement.csv");
+    } else {
       return NextResponse.json(
-        { error: "csvText and mapping are required." },
+        { error: "Nothing to import." },
         { status: 400 }
       );
     }
 
-    const result = await importCsv(
-      csvText,
-      mapping,
-      fileName ?? "statement.csv"
-    );
-
-    // Run the subscription-detection pipeline over all stored transactions.
-    // Detection is idempotent, so if Gemini is unavailable (e.g. rate-limited)
-    // we still return the successful import and let a later upload re-detect.
+    // Run detection over all stored transactions. Non-fatal if Gemini fails.
     try {
       const detection = await detectSubscriptions();
       return NextResponse.json({ ...result, detection });

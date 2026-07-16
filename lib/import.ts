@@ -24,17 +24,15 @@ export interface ImportResult {
 }
 
 /**
- * Parse + normalize a CSV, then persist new transactions under a new Upload,
- * skipping any that already exist (by dedupeHash). See docs/HLD.md §3.1.
+ * Persist normalized (spend-only, positive-amount) transactions under a new
+ * Upload, skipping any that already exist by dedupeHash. Shared by the CSV and
+ * PDF import paths. See docs/HLD.md §3.1.
  */
-export async function importCsv(
-  csvText: string,
-  mapping: ColumnMapping,
-  fileName: string
+export async function importNormalized(
+  transactions: NormalizedTransaction[],
+  fileName: string,
+  bankGuess: string | null
 ): Promise<ImportResult> {
-  const source = new CsvTransactionSource(csvText, mapping);
-  const transactions = await source.parse();
-
   // Deduplicate within the file itself first.
   const byHash = new Map<string, NormalizedTransaction>();
   for (const tx of transactions) {
@@ -58,7 +56,7 @@ export async function importCsv(
   const upload = await prisma.upload.create({
     data: {
       fileName,
-      bankGuess: mapping.bankGuess,
+      bankGuess,
       transactionCount: toInsert.length,
     },
   });
@@ -81,4 +79,15 @@ export async function importCsv(
     imported: toInsert.length,
     skipped: byHash.size - toInsert.length,
   };
+}
+
+/** Parse + normalize a CSV, then persist via importNormalized. */
+export async function importCsv(
+  csvText: string,
+  mapping: ColumnMapping,
+  fileName: string
+): Promise<ImportResult> {
+  const source = new CsvTransactionSource(csvText, mapping);
+  const transactions = await source.parse();
+  return importNormalized(transactions, fileName, mapping.bankGuess);
 }

@@ -55,6 +55,7 @@ npx prisma studio    # inspect DB
 1. **Two-stage subscription detection**: a deterministic rules engine (`lib/detection.ts`) finds recurring-charge candidates first (same merchant, amount within ±15%, weekly/monthly/yearly cadence ±5 days); only those candidates go to Gemini for name normalization, description, category, and final is-it-a-subscription judgment. Never send every transaction to the AI.
 2. **Merchant cache**: Gemini analysis results are stored in the `Merchant` table and reused. A merchant already analyzed must not trigger another API call.
 3. **CSV column mapping via Gemini**: bank CSV formats differ; send header + 5 sample rows to Gemini to get a `{date, description, amount}` column mapping, then show the user a preview before import.
+   - **PDF statements** are also supported: `/api/upload` accepts multipart (a PDF file), extracts text with `unpdf` (`lib/pdf.ts`), and Gemini structures it into transactions (`extractTransactionsFromText` in `lib/gemini.ts`). Debits become spend. CSV path stays JSON `{csvText}`; the route branches on content-type. Both import paths share `importNormalized` in `lib/import.ts`.
 4. **Duplicate-safe imports**: `Transaction` has a unique hash over `(date, amount, rawDescription)` so re-uploading the same CSV is a no-op.
 5. **`TransactionSource` abstraction**: CSV import is one implementation; keep the interface clean so Plaid/Teller connectors can be added later without touching the pipeline.
 

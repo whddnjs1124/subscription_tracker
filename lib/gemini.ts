@@ -2,9 +2,11 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { ColumnMapping, MerchantAnalysis } from "@/lib/types";
 import { MERCHANT_CATEGORIES } from "@/lib/categories";
 
-// gemini-2.5-flash is no longer available to new API keys; 3.5-flash is the
-// current stable flash model (verified against models.list for this key).
-const MODEL = "gemini-3.5-flash";
+// Free-tier quota is per-model per-day. flash-lite has a separate, more generous
+// free bucket and is plenty for column mapping / merchant classification. Use the
+// "-latest" alias so it stays current instead of 404-ing when a version retires.
+// (gemini-2.5-flash 404s for new keys; gemini-3.5-flash / 2.0-flash get rate-limited.)
+const MODEL = "gemini-flash-lite-latest";
 
 let client: GoogleGenAI | null = null;
 
@@ -166,6 +168,51 @@ ${JSON.stringify(
   };
 
   return generateJson<MerchantAnalysis[]>(prompt, schema);
+}
+
+export interface ExtractedTransaction {
+  date: string; // YYYY-MM-DD
+  description: string;
+  amount: number; // positive
+  type: "debit" | "credit";
+}
+
+/**
+ * Extract transactions from raw bank-statement PDF text. Gemini reads the messy
+ * statement layout and returns a structured list; the caller keeps debits as
+ * spend. `statementHint` (e.g. a date from the filename) helps infer the year.
+ */
+export async function extractTransactionsFromText(
+  text: string,
+  statementHint?: string
+): Promise<ExtractedTransaction[]> {
+  const prompt = `Extract every transaction from this bank statement text.
+${statementHint ? `The statement is dated around ${statementHint}; ` : ""}infer the correct 4-digit year for each MM/DD date.
+For each transaction return:
+- date: YYYY-MM-DD
+- description: the merchant/payee text as shown
+- amount: a positive number
+- type: "debit" if money left the account (a purchase, fee, withdrawal, or outgoing transfer), "credit" if money came in (a deposit, refund, or incoming transfer).
+Ignore summary totals, running balances, interest summaries, and any non-transaction lines.
+
+Statement text:
+${text}`;
+
+  const schema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        date: { type: Type.STRING },
+        description: { type: Type.STRING },
+        amount: { type: Type.NUMBER },
+        type: { type: Type.STRING, enum: ["debit", "credit"] },
+      },
+      required: ["date", "description", "amount", "type"],
+    },
+  };
+
+  return generateJson<ExtractedTransaction[]>(prompt, schema);
 }
 
 /**
