@@ -121,7 +121,7 @@ export default async function DashboardPage() {
           <div className="mt-8">
             <EmptyState
               title="No subscriptions yet"
-              description="Upload a bank statement (CSV or PDF) and Sub Tracker will detect your recurring subscriptions automatically."
+              description="Upload a bank statement (CSV or PDF) and Subscription Tracker will detect your recurring subscriptions automatically."
               actionHref="/upload"
               actionLabel="Upload your first statement"
             />

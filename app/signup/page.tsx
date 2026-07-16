@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { Brand } from "@/components/brand";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -47,11 +48,8 @@ export default function SignupPage() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="mb-6 flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-sm font-bold text-white shadow-sm shadow-emerald-500/30">
-          S
-        </div>
-        <span className="text-lg font-semibold tracking-tight">Sub Tracker</span>
+      <div className="mb-6 flex justify-center">
+        <Brand size="lg" />
       </div>
 
       <div className="rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

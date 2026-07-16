@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sub Tracker",
+  title: "Subscription Tracker",
   description: "Find and manage your recurring subscriptions from bank statements.",
 };
 

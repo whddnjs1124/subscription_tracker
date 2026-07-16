@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { BrandMark, Wordmark } from "@/components/brand";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: "grid" },
@@ -71,12 +72,8 @@ export function Sidebar({ email }: { email: string }) {
   return (
     <aside className="flex shrink-0 flex-row gap-1 border-b border-zinc-200 bg-white/80 px-4 py-3 backdrop-blur sm:w-60 sm:flex-col sm:gap-1 sm:border-b-0 sm:border-r sm:px-4 sm:py-6 dark:border-zinc-800 dark:bg-zinc-950/80">
       <div className="mb-0 flex items-center gap-2.5 px-2 sm:mb-8">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-sm font-bold text-white shadow-sm shadow-emerald-500/30">
-          S
-        </div>
-        <span className="hidden text-base font-semibold tracking-tight sm:inline">
-          Sub&nbsp;Tracker
-        </span>
+        <BrandMark />
+        <Wordmark className="hidden sm:block" />
       </div>
 
       <nav className="flex flex-1 flex-row gap-1 sm:flex-col">
