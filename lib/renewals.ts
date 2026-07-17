@@ -50,11 +50,13 @@ export function groupUpcoming(
       (a, b) => a.nextBillingEstimate.getTime() - b.nextBillingEstimate.getTime()
     );
 
-  // Half-open buckets [min, max) so every day lands in exactly one.
+  // Half-open buckets [min, max) so every day lands in exactly one. The last
+  // one is just "Later": the window is a rolling 30 days, so it routinely
+  // spills into the next calendar month and can't claim to be "this month".
   const buckets = [
     { label: "This week", min: 0, max: 7 },
     { label: "Next week", min: 7, max: 14 },
-    { label: "Later this month", min: 14, max: RENEWAL_WINDOW_DAYS + 1 },
+    { label: "Later", min: 14, max: RENEWAL_WINDOW_DAYS + 1 },
   ];
 
   const groups: RenewalGroup[] = [];
