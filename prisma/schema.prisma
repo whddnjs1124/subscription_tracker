@@ -89,7 +89,15 @@ model Subscription {
   firstSeen           DateTime
   lastCharged         DateTime
   nextBillingEstimate DateTime
-  status              String   @default("active") // active | cancelled | rejected
+  // Status values are split by who may set them: `stale` is system-set only
+  // (auto-detected inactivity, see lib/lifecycle.ts) and `cancelled` is
+  // user-set only. That split is what keeps "it stopped charging" apart from
+  // "I cancelled it" — detection never writes `cancelled`, PATCH never
+  // accepts `stale`.
+  status              String   @default("active") // active | stale | cancelled | rejected
+  // Set once the user edits amount/cadence/nextBillingEstimate; re-detection
+  // must not overwrite those fields, or every import would undo the edit.
+  userEdited          Boolean  @default(false)
   isManual            Boolean  @default(false)
   note                String?
 

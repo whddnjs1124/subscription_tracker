@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/session";
-import { PageHeader, Card, CategoryBadge } from "@/components/ui";
+import { PageHeader, Card, CategoryBadge, StatusBadge } from "@/components/ui";
 import { SubscriptionActions } from "@/components/subscription-actions";
 import { formatCurrency, formatDate } from "@/lib/format";
 
@@ -67,34 +67,28 @@ export default async function SubscriptionDetailPage({
   const changes = priceChanges(charges);
   const latestIncrease = changes.filter((c) => c.to > c.from).at(-1);
 
-  const statusStyle: Record<string, string> = {
-    active: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
-    cancelled: "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-    rejected: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
-  };
-
   return (
     <div className="mx-auto max-w-3xl">
       <Link
-        href="/"
+        href="/subscriptions"
         className="mb-4 inline-block text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
       >
-        ← Back to dashboard
+        ← Back to subscriptions
       </Link>
 
       <PageHeader
         title={merchant.normalizedName}
         subtitle={merchant.description}
-        action={
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
-              statusStyle[subscription.status] ?? statusStyle.cancelled
-            }`}
-          >
-            {subscription.status}
-          </span>
-        }
+        action={<StatusBadge status={subscription.status} />}
       />
+
+      {subscription.status === "stale" && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+          Marked inactive automatically — nothing has been charged since{" "}
+          {formatDate(subscription.lastCharged)}, so it no longer counts toward
+          your totals. Reactivate it if it&apos;s still running.
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card>
@@ -150,6 +144,13 @@ export default async function SubscriptionDetailPage({
           status={subscription.status}
           name={merchant.normalizedName}
           note={subscription.note}
+          amount={Number(subscription.amount)}
+          cadence={subscription.cadence}
+          category={merchant.category}
+          nextBillingEstimate={
+            subscription.nextBillingEstimate.toISOString().slice(0, 10)
+          }
+          userEdited={subscription.userEdited}
         />
       </div>
 

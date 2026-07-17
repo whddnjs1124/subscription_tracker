@@ -122,6 +122,29 @@ const CATEGORY_STYLES: Record<string, string> = {
   fitness: "bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300",
 };
 
+const STATUS_STYLES: Record<string, string> = {
+  active: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
+  stale: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
+  cancelled: "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  rejected: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
+};
+
+/** Labels differ from the raw status where the stored word isn't self-explanatory. */
+const STATUS_LABELS: Record<string, string> = {
+  stale: "inactive",
+};
+
+export function StatusBadge({ status }: { status: string }) {
+  const style = STATUS_STYLES[status] ?? STATUS_STYLES.cancelled;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${style}`}
+    >
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
+
 export function CategoryBadge({ category }: { category: string }) {
   const style =
     CATEGORY_STYLES[category.toLowerCase()] ??

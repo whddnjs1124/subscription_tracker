@@ -7,9 +7,11 @@ import { BrandMark, Wordmark } from "@/components/brand";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: "grid" },
+  { href: "/subscriptions", label: "Subscriptions", icon: "layers" },
   { href: "/transactions", label: "Transactions", icon: "list" },
   { href: "/upload", label: "Upload", icon: "upload" },
   { href: "/insights", label: "Insights", icon: "spark" },
+  { href: "/settings", label: "Settings", icon: "gear" },
 ] as const;
 
 function Icon({ name }: { name: string }) {
@@ -56,6 +58,21 @@ function Icon({ name }: { name: string }) {
       return (
         <svg {...common}>
           <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
+        </svg>
+      );
+    case "layers":
+      return (
+        <svg {...common}>
+          <path d="M12 2l9 5-9 5-9-5 9-5z" />
+          <path d="M3 12l9 5 9-5" />
+          <path d="M3 17l9 5 9-5" />
+        </svg>
+      );
+    case "gear":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       );
     default:

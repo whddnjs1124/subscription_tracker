@@ -22,8 +22,36 @@ function getClient(): GoogleGenAI {
 }
 
 /**
+ * The daily free-tier quota ran out (HTTP 429 / RESOURCE_EXHAUSTED). Callers use
+ * this to tell "the AI is out of budget until tomorrow" apart from a transient
+ * failure, and to report it instead of silently under-reporting results.
+ */
+export class GeminiQuotaError extends Error {
+  readonly quota = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "GeminiQuotaError";
+  }
+}
+
+/** Does this error mean we're out of quota rather than briefly unlucky? */
+function isQuotaError(err: unknown): boolean {
+  if (err instanceof GeminiQuotaError) return true;
+  // The @google/genai SDK throws ApiError with a numeric `status`; fall back to
+  // the message for anything that doesn't surface one.
+  const status = (err as { status?: unknown } | null)?.status;
+  if (status === 429) return true;
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /RESOURCE_EXHAUSTED|\b429\b|quota/i.test(message);
+}
+
+/**
  * Call Gemini expecting a JSON response that matches `schema`, with one retry.
  * All Gemini access in this app goes through helpers in this file.
+ *
+ * Quota errors are rethrown as GeminiQuotaError without a retry: the free-tier
+ * budget is per-day, so an immediate second attempt only burns the retry.
  */
 async function generateJson<T>(
   prompt: string,
@@ -48,6 +76,13 @@ async function generateJson<T>(
       if (!text) throw new Error("Empty response from Gemini.");
       return JSON.parse(text) as T;
     } catch (err) {
+      if (isQuotaError(err)) {
+        throw new GeminiQuotaError(
+          `Gemini quota exhausted: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
       lastError = err;
     }
   }
@@ -240,14 +275,25 @@ save money. Be specific with the numbers. Do not invent data beyond the summary.
 Summary:
 ${summary}`;
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: prompt,
-    config: { temperature: 0.4 },
-  });
-  const text = response.text;
-  if (!text) throw new Error("Empty response from Gemini.");
-  return text;
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: { temperature: 0.4 },
+    });
+    const text = response.text;
+    if (!text) throw new Error("Empty response from Gemini.");
+    return text;
+  } catch (err) {
+    if (isQuotaError(err)) {
+      throw new GeminiQuotaError(
+        `Gemini quota exhausted: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+    throw err;
+  }
 }
 
 export { generateJson, Type };

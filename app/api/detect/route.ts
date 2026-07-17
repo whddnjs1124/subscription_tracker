@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { detectSubscriptions } from "@/lib/detect";
+import { GeminiQuotaError } from "@/lib/gemini";
 import { getUserId } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -23,6 +24,9 @@ export async function POST() {
       detection: {
         candidates: 0,
         merchantsAnalyzed: 0,
+        merchantsPending: 0,
+        quotaExhausted: err instanceof GeminiQuotaError,
+        staleMarked: 0,
         subscriptions: [],
         error: message,
       },

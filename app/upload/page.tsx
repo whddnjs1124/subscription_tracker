@@ -6,6 +6,7 @@ import { PageHeader, Card, CategoryBadge } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { ColumnMapping } from "@/lib/types";
 import { ManualAddForm } from "@/components/manual-add-form";
+import { RerunDetection } from "@/components/rerun-detection";
 
 type Status =
   | "idle"
@@ -46,6 +47,10 @@ interface DetectedSub {
 interface Detection {
   candidates: number;
   merchantsAnalyzed: number;
+  // Optional: the route's error fallback doesn't always carry these.
+  merchantsPending?: number;
+  quotaExhausted?: boolean;
+  staleMarked?: number;
   subscriptions: DetectedSub[];
   error?: string;
 }
@@ -82,12 +87,17 @@ export default function UploadPage() {
     setRejected(new Set());
   }
 
-  async function rejectSub(id: string) {
-    setRejected((prev) => new Set(prev).add(id));
+  async function setSubStatus(id: string, status: "rejected" | "active") {
+    setRejected((prev) => {
+      const next = new Set(prev);
+      if (status === "rejected") next.add(id);
+      else next.delete(id);
+      return next;
+    });
     await fetch(`/api/subscriptions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "rejected" }),
+      body: JSON.stringify({ status }),
     });
   }
 
@@ -241,6 +251,8 @@ export default function UploadPage() {
       setDetection({
         candidates: 0,
         merchantsAnalyzed: 0,
+        merchantsPending: 0,
+        quotaExhausted: false,
         subscriptions: [],
         error: "Detection failed.",
       });
@@ -426,6 +438,31 @@ export default function UploadPage() {
             )}
           </Card>
 
+          {detection &&
+            !detection.error &&
+            ((detection.merchantsPending ?? 0) > 0 ||
+              detection.quotaExhausted) && (
+              <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-500/10">
+                <p className="text-amber-800 dark:text-amber-300">
+                  {detection.quotaExhausted
+                    ? "The daily AI quota ran out mid-analysis"
+                    : "Some merchants couldn't be analyzed"}
+                  {(detection.merchantsPending ?? 0) > 0 && (
+                    <>
+                      {" "}
+                      — <strong>{detection.merchantsPending}</strong> merchant
+                      {detection.merchantsPending === 1 ? "" : "s"} still
+                      unanalyzed, so any subscriptions among them are missing
+                      from the list below
+                    </>
+                  )}
+                  . Your transactions are saved; nothing is lost. The free tier
+                  resets daily — re-run detection then.
+                </p>
+                <RerunDetection />
+              </div>
+            )}
+
           <OutcomeList outcomes={outcomes} />
 
           {detection && detection.subscriptions.length > 0 && (
@@ -467,9 +504,16 @@ export default function UploadPage() {
                               /{s.cadence.replace("ly", "")}
                             </span>
                           </span>
-                          {!isRejected && (
+                          {isRejected ? (
                             <button
-                              onClick={() => rejectSub(s.id)}
+                              onClick={() => setSubStatus(s.id, "active")}
+                              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:border-emerald-300 hover:text-emerald-600 dark:border-zinc-700 dark:text-zinc-300"
+                            >
+                              Undo
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setSubStatus(s.id, "rejected")}
                               className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:border-rose-300 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-300"
                             >
                               Reject

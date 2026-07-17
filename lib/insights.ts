@@ -27,24 +27,27 @@ export interface InsightStats {
   staleSubscriptions: StaleSubscription[];
 }
 
-const CADENCE_DAYS: Record<string, number> = {
-  weekly: 7,
-  monthly: 30,
-  yearly: 365,
-};
-
 /**
  * Deterministic subscription insights computed directly from the database —
  * no AI required. The AI narrative (lib/gemini) is layered on top separately.
+ *
+ * Totals cover `active` subscriptions only, so anything lib/lifecycle.ts has
+ * retired as `stale` drops out of the spend figures automatically.
  */
-export async function computeInsights(
-  userId: string,
-  now = new Date()
-): Promise<InsightStats> {
-  const subscriptions = await prisma.subscription.findMany({
-    where: { userId, status: "active" },
-    include: { merchant: true },
-  });
+export async function computeInsights(userId: string): Promise<InsightStats> {
+  const [subscriptions, staleRows] = await Promise.all([
+    prisma.subscription.findMany({
+      where: { userId, status: "active" },
+      include: { merchant: true },
+    }),
+    // Stale is a stored status now (set by applyStaleStatus), not something we
+    // recompute here — one definition, used by the totals and this list alike.
+    prisma.subscription.findMany({
+      where: { userId, status: "stale" },
+      include: { merchant: true },
+      orderBy: { lastCharged: "asc" },
+    }),
+  ]);
 
   const subs = subscriptions.map((s) => ({
     id: s.id,
@@ -83,20 +86,14 @@ export async function computeInsights(
   }
   duplicateWarnings.sort((a, b) => b.monthlyTotal - a.monthlyTotal);
 
-  // Stale: last charge older than 2x the expected cadence -> maybe unused.
-  const staleSubscriptions: StaleSubscription[] = subs
-    .filter((s) => {
-      const days = (now.getTime() - s.lastCharged.getTime()) / (24 * 3600 * 1000);
-      return days > (CADENCE_DAYS[s.cadence] ?? 30) * 2;
-    })
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      lastCharged: s.lastCharged,
-      amount: s.amount,
-      cadence: s.cadence,
-    }))
-    .sort((a, b) => a.lastCharged.getTime() - b.lastCharged.getTime());
+  // Subscriptions already retired as stale — no charge in 2x their cadence.
+  const staleSubscriptions: StaleSubscription[] = staleRows.map((s) => ({
+    id: s.id,
+    name: s.merchant.normalizedName,
+    lastCharged: s.lastCharged,
+    amount: Number(s.amount),
+    cadence: s.cadence,
+  }));
 
   return {
     monthlyTotal,
