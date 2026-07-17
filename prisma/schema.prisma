@@ -106,6 +106,18 @@ model Subscription {
   @@index([status])
 }
 
+// Throttles credential guessing and signup spam. This lives in the database
+// rather than in memory because the app runs serverless on Vercel: an
+// in-process counter would reset on every cold start and be per-instance, so
+// it would throttle almost nothing.
+model RateLimit {
+  key         String   @id // "login:email:a@b.c" | "login:ip:1.2.3.4" | "signup:ip:1.2.3.4"
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+
+  @@index([windowStart]) // for pruning expired rows
+}
+
 model Insight {
   id          String   @id @default(cuid())
   userId      String

@@ -23,7 +23,12 @@ export default function LoginPage() {
       redirect: false,
     });
     if (res?.error) {
-      setError("Wrong email or password.");
+      // Without this the lockout looks like an endless run of wrong passwords.
+      setError(
+        res.code === "rate_limited"
+          ? "Too many sign-in attempts. Please wait a few minutes and try again."
+          : "Wrong email or password."
+      );
       setBusy(false);
       return;
     }
